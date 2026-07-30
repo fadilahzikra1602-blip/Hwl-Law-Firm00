@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Absensi & Manajemen - HWL Law Firm</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome CDN untuk Ikon -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- QR Scanner Library CDN -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        maroon: {
+                            DEFAULT: '#6B1426',
+                            dark: '#4A0D1A',
+                            light: '#8C1D33'
+                        },
+                        gold: {
+                            DEFAULT: '#C5A059',
+                            light: '#E2C37D',
+                            dark: '#A37F3E'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .gold-gradient { background: linear-gradient(135deg, #C5A059 0%, #E2C37D 50%, #A37F3E 100%); }
+        .maroon-gradient { background: linear-gradient(135deg, #6B1426 0%, #4A0D1A 100%); }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col justify-between">
+
+    <!-- Top Bar / Header -->
+    <header class="maroon-gradient text-white border-b-4 border-gold shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full gold-gradient flex items-center justify-center text-maroon-dark font-bold text-xl shadow">
+                    <i class="fa-solid fa-scale-balanced"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight tracking-wider text-gold-light">HWL LAW FIRM</h1>
+                    <p class="text-xs text-gray-200">Advocates & Legal Consultants</p>
+                </div>
+            </div>
+            <div id="header-user-info" class="text-right text-xs">
+                <!-- Status User diisi via JS -->
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main id="app" class="flex-grow max-w-7xl w-full mx-auto p-4 md:p-6">
+        <!-- Konten Dinamis Dirender Oleh JavaScript -->
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-maroon-dark text-gold py-4 text-center text-xs border-t border-gold/30">
+        <p>&copy; 2026 HWL Law Firm. All Rights Reserved. System Version 2.4 (Offline-Ready System).</p>
+    </footer>
+
+    <!-- Application Logic -->
+    <script>
+        // Synchronized Database Store via LocalStorage & BroadcastChannel
+        const broadcast = new BroadcastChannel('hwl_firm_sync');
+
+        const DEFAULT_DATA = {
+            admin: {
+                email: 'admin@hwllawfirm.com',
+                password: 'admin123'
+            },
+            settings: {
+                workStart: '08:00',
+                workEnd: '17:00',
+                workDays: 'Senin - Jumat',
+                officeQR: 'HWL-OFFICE-CHECKIN-2026'
+            },
+            employees: [
+                { id: 'HWL-001', name: 'Dewi Lestari, S.H.', email: 'dewi@hwllawfirm.com', phone: '081234567890', photo: '', barcode: 'HWL-001' },
+                { id: 'HWL-002', name: 'Rian Pratama, S.H., M.H.', email: 'rian@hwllawfirm.com', phone: '081298765432', photo: '', barcode: 'HWL-002' }
+            ],
+            attendance: [],
+            tasks: [
+                { id: 1, title: 'Menyusun Eksepsi Perkara Perdata No. 01372/2024', deadline: '2026-07-31 16:00', assignee: 'HWL-001', status: 'Pending' }
+            ],
+            leaves: []
+        };
+
+        function getDB() {
+            const data = localStorage.getItem('hwl_law_firm_db');
+            return data ? JSON.parse(data) : DEFAULT_DATA;
+        }
+
+        function saveDB(data) {
+            localStorage.setItem('hwl_law_firm_db', JSON.stringify(data));
+            broadcast.postMessage({ type: 'DATA_UPDATED' });
+            render();
+        }
+
+        // Broadcast Listener untuk Sinkronisasi Antar Perangkat / Tab
+        broadcast.onmessage = (event) => {
+            if (event.data.type === 'DATA_UPDATED') {
+                render();
+            }
+        };
+
+        // Session State
+        let session = JSON.parse(sessionStorage.getItem('hwl_session')) || { role: null, user: null };
+
+        function setSession(role, user) {
+            session = { role, user };
+            sessionStorage.setItem('hwl_session', JSON.stringify(session));
+            render();
+        }
+
+        function logout() {
+            sessionStorage.removeItem('hwl_session');
+            session = { role: null, user: null };
+            render();
+        }
+
+        // Main App Renderer
+        function render() {
+            const db = getDB();
+            const app = document.getElementById('app');
+            const headerInfo = document.getElementById('header-user-info');
+
+            if (!session.role) {
+                headerInfo.innerHTML = `<span class="bg-gold/20 text-gold px-2 py-1 rounded border border-gold/40">Sistem Belum Login</span>`;
+                app.innerHTML = renderLoginScreen(db);
+            } else if (session.role === 'admin') {
+                headerInfo.innerHTML = `
+                    <p class="font-bold text-gold">${session.user.email}</p>
+                    <button onclick="logout()" class="text-red-300 hover:text-white underline text-[10px]">Keluar Admin</button>
+                `;
+                app.innerHTML = renderAdminPortal(db);
+            } else if (session.role === 'employee') {
+                headerInfo.innerHTML = `
+                    <p class="font-bold text-gold">${session.user.name}</p>
+                    <button onclick="logout()" class="text-red-300 hover:text-white underline text-[10px]">Keluar Portal</button>
+                `;
+                app.innerHTML = renderEmployeePortal(db);
+            }
+        }
+
+        // ==========================================
+        // 1. TAMPILAN LOGIN
+        // ==========================================
+        function renderLoginScreen(db) {
+            return `
+                <div class="max-w-md mx-auto my-8 bg-white rounded-2xl shadow-2xl border-2 border-gold overflow-hidden">
+                    <div class="maroon-gradient p-6 text-center border-b border-gold/30">
+                        <i class="fa-solid fa-user-shield text-gold text-4xl mb-2"></i>
+                        <h2 class="text-2xl font-bold text-white tracking-wide">Portal Akses</h2>
+                        <p class="text-gold-light text-xs mt-1">Sistem Absensi Kehadiran HWL Law Firm</p>
+                    </div>
+
+                    <div class="p-6">
+                        <!-- Switch Mode Login -->
+                        <div class="flex bg-gray-100 rounded-xl p-1 mb-6 border">
+                            <button onclick="toggleLoginTab('admin')" id="tab-admin-btn" class="flex-1 py-2 text-sm font-bold rounded-lg bg-maroon text-gold shadow">Portal Admin</button>
+                            <button onclick="toggleLoginTab('employee')" id="tab-emp-btn" class="flex-1 py-2 text-sm font-bold text-gray-500 hover:text-maroon">Portal Karyawan</button>
+                        </div>
+
+                        <!-- Form Admin Login -->
+                        <div id="form-admin-login" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Gmail Admin</label>
+                                <input type="email" id="login-admin-email" value="${db.admin.email}" class="w-full px-4 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-maroon focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Password Admin</label>
+                                <input type="password" id="login-admin-pass" value="${db.admin.password}" class="w-full px-4 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-maroon focus:outline-none">
+                            </div>
+                            <button onclick="processAdminLogin()" class="w-full maroon-gradient hover:bg-maroon-dark text-gold font-bold py-3 rounded-lg border border-gold shadow transition">
+                                <i class="fa-solid fa-right-to-bracket mr-2"></i>Masuk Portal Admin
+                            </button>
+                        </div>
+
+                        <!-- Form Karyawan Login -->
+                        <div id="form-employee-login" class="space-y-4 hidden">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Pilih Karyawan Terdaftar</label>
+                                <select id="login-emp-id" class="w-full px-4 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-maroon focus:outline-none">
+                                    ${db.employees.map(e => `<option value="${e.id}">${e.name} (${e.id})</option>`).join('')}
+                                </select>
+                            </div>
+                            <button onclick="processEmployeeLogin()" class="w-full bg-gold hover:bg-gold-dark text-maroon-dark font-bold py-3 rounded-lg border border-maroon shadow transition">
+                                <i class="fa-solid fa-user-check mr-2"></i>Masuk Portal Absen
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleLoginTab(tab) {
+            const adminBtn = document.getElementById('tab-admin-btn');
+            const empBtn = document.getElementById('tab-emp-btn');
+            const formAdmin = document.getElementById('form-admin-login');
+            const formEmp = document.getElementById('form-employee-login');
+
+            if (tab === 'admin') {
+                adminBtn.className = "flex-1 py-2 text-sm font-bold rounded-lg bg-maroon text-gold shadow";
+                empBtn.className = "flex-1 py-2 text-sm font-bold text-gray-500 hover:text-maroon";
+                formAdmin.classList.remove('hidden');
+                formEmp.classList.add('hidden');
+            } else {
+                empBtn.className = "flex-1 py-2 text-sm font-bold rounded-lg bg-maroon text-gold shadow";
+                adminBtn.className = "flex-1 py-2 text-sm font-bold text-gray-500 hover:text-maroon";
+                formEmp.classList.remove('hidden');
+                formAdmin.classList.add('hidden');
+            }
+        }
+
+        function processAdminLogin() {
+            const db = getDB();
+            const email = document.getElementById('login-admin-email').value;
+            const pass = document.getElementById('login-admin-pass').value;
+
+            if (email === db.admin.email && pass === db.admin.password) {
+                setSession('admin', { email: db.admin.email });
+            } else {
+                alert('Gagal Login Admin: Gmail atau Password salah!');
+            }
+        }
+
+        function processEmployeeLogin() {
+            const db = getDB();
+            const empId = document.getElementById('login-emp-id').value;
+            const emp = db.employees.find(e => e.id === empId);
+
+            if (emp) {
+                setSession('employee', emp);
+            } else {
+                alert('Karyawan tidak ditemukan!');
+            }
+        }
+
+        // ==========================================
+        // 2. PORTAL ADMIN
+        // ==========================================
+        let adminTab = 'dashboard';
+
+        function renderAdminPortal(db) {
+            return `
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <!-- Sidebar Navigasi -->
+                    <div class="bg-white rounded-xl shadow border border-gold/30 p-4 space-y-2">
+                        <div class="p-3 maroon-gradient rounded-lg text-gold text-center font-bold mb-4">
+                            <i class="fa-solid fa-user-gear mr-2"></i>MENU ADMIN
+                        </div>
+                        <button onclick="switchAdminTab('dashboard')" class="w-full text-left px-4 py-2.5 rounded-lg font-bold text-sm ${adminTab === 'dashboard' ? 'bg-maroon text-gold' : 'hover:bg-gray-100 text-gray-700'}">
+                            <i class="fa-solid fa-chart-line w-6"></i>Dashboard
+                        </button>
+                        <button onclick="switchAdminTab('employees')" class="w-full text-left px-4 py-2.5 rounded-lg font-bold text-sm ${adminTab === 'employees' ? 'bg-maroon text-gold' : 'hover:bg-gray-100 text-gray-700'}">
+                            <i class="fa-solid fa-users w-6"></i>Data Karyawan & Barcode
+                        </button>
+                        <button onclick="switchAdminTab('attendance')" class="w-full text-left px-4 py-2.5 rounded-lg font-bold text-sm ${adminTab === 'attendance' ? 'bg-maroon text-gold' : 'hover:bg-gray-100 text-gray-700'}">
+                            <i class="fa-solid fa-clipboard-user w-6"></i>Rekap Absen & Word
+                        </button>
+                        <button onclick="switchAdminTab('tasks')" class="w-full text-left px-4 py-2.5 rounded-lg font-bold text-sm ${adminTab === 'tasks' ? 'bg-maroon text-gold' : 'hover:bg-gray-100 text-gray-700'}">
+                            <i class="fa-solid fa-list-check w-6"></i>Tugas & Deadline
+                        </button>
+                        <button onclick="switchAdminTab('leaves')" class="w-full text-left px-4 py-2.5 rounded-lg font-bold text-sm ${adminTab === 'leaves' ? 'bg-maroon text-gold' : 'hover:bg-gray-100 text-gray-700'}">
+                            <i class="fa-solid fa-envelope-open-text w-6"></i>Izin & Surat Sakit
+                        </button>
+                        <button onclick="switchAdminTab('settings')" class="w-full text-left px-4 py-2.5 rounded-lg font-bold text-sm ${adminTab === 'settings' ? 'bg-maroon text-gold' : 'hover:bg-gray-100 text-gray-700'}">
+                            <i class="fa-solid fa-sliders w-6"></i>Pengaturan Jam & Akun
+                        </button>
+                    </div>
+
+                    <!-- Area Konten Utama -->
+                    <div class="md:col-span-3">
+                        ${renderAdminTabContent(db)}
+                    </div>
+                </div>
+            `;
+        }
+
+        function switchAdminTab(tab) {
+            adminTab = tab;
+            render();
+        }
+
+        function renderAdminTabContent(db) {
+            if (adminTab === 'dashboard') {
+                const today = new Date().toISOString().split('T')[0];
+                const todayAtt = db.attendance.filter(a => a.date === today);
+                return `
+                    <div class="space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="bg-white p-5 rounded-xl shadow border-l-4 border-maroon">
+                                <p class="text-xs text-gray-500 font-bold uppercase">Total Karyawan</p>
+                                <h3 class="text-3xl font-bold text-maroon mt-1">${db.employees.length} Orang</h3>
+                            </div>
+                            <div class="bg-white p-5 rounded-xl shadow border-l-4 border-gold">
+                                <p class="text-xs text-gray-500 font-bold uppercase">Hadir Hari Ini</p>
+                                <h3 class="text-3xl font-bold text-gold-dark mt-1">${todayAtt.length} Orang</h3>
+                            </div>
+                            <div class="bg-white p-5 rounded-xl shadow border-l-4 border-maroon-light">
+                                <p class="text-xs text-gray-500 font-bold uppercase">Izin / Sakit</p>
+                                <h3 class="text-3xl font-bold text-maroon-light mt-1">${db.leaves.length} Pengajuan</h3>
+                            </div>
+                        </div>
+
+                        <!-- Main Office Barcode Display -->
+                        <div class="bg-white rounded-xl shadow p-6 border border-gold/40">
+                            <h3 class="font-bold text-lg text-maroon mb-2 flex items-center">
+                                <i class="fa-solid fa-qrcode mr-2 text-gold"></i>Barcode Utama Kantor (Untuk Di-Print & Ditempel)
+                            </h3>
+                            <p class="text-xs text-gray-600 mb-4">Cetak Barcode di bawah ini dan tempelkan di dinding depan kantor HWL Law Firm. Setiap karyawan wajib melakukan scan barcode ini dari HP masing-masing.</p>
+                            <div class="flex flex-col items-center bg-gray-50 p-6 rounded-xl border border-dashed border-gold">
+                                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${db.settings.officeQR}" alt="QR Kantor HWL" class="shadow-md rounded p-2 bg-white border border-gray-300">
+                                <p class="font-mono text-sm font-bold text-maroon mt-3">${db.settings.officeQR}</p>
+                                <button onclick="window.print()" class="mt-4 px-4 py-2 bg-maroon text-gold font-bold text-xs rounded shadow hover:bg-maroon-dark">
+                                    <i class="fa-solid fa-print mr-1"></i> Cetak Barcode Kantor
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (adminTab === 'employees') {
+                return `
+                    <div class="bg-white rounded-xl shadow p-6 border border-gold/30">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="font-bold text-lg text-maroon"><i class="fa-solid fa-users mr-2"></i>Manajemen Data Karyawan</h3>
+                            <button onclick="openModalAddEmp()" class="bg-maroon text-gold px-4 py-2 rounded-lg font-bold text-xs hover:bg-maroon-dark shadow">
+                                <i class="fa-solid fa-user-plus mr-1"></i>Tambah Karyawan
+                            </button>
+                        </div>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="bg-maroon text-gold font-bold">
+                                        <th class="p-3 border">ID & Nama</th>
+                                        <th class="p-3 border">Email</th>
+                                        <th class="p-3 border">No. Telp</th>
+                                        <th class="p-3 border">Kode Barcode</th>
+                                        <th class="p-3 border text-center">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${db.employees.map(e => `
+                                        <tr class="hover:bg-gray-50 border-b">
+                                            <td class="p-3 font-bold">${e.name}<br><span class="text-[10px] text-gray-500 font-normal">${e.id}</span></td>
+                                            <td class="p-3">${e.email}</td>
+                                            <td class="p-3">${e.phone}</td>
+                               
